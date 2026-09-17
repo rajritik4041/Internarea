@@ -104,6 +104,37 @@ export default function DetailAndApplyPage() {
     fetchDetail();
   }, [id]);
 
+  const [userSubscription, setUserSubscription] = useState<any>(null);
+  const [defaultResume, setDefaultResume] = useState<any>(null);
+  const [quotaExhausted, setQuotaExhausted] = useState(false);
+
+  useEffect(() => {
+    if (currentUser?.Email) {
+      axios
+        .get(`${API_BASE_URL}/api/subscription/status/${encodeURIComponent(currentUser.Email)}`)
+        .then((res) => {
+          if (res.data?.status) {
+            setUserSubscription(res.data.subscription);
+            const sub = res.data.subscription;
+            if (sub && sub.usedApplications >= sub.applicationLimit) {
+              setQuotaExhausted(true);
+            }
+          }
+        })
+        .catch(() => {});
+
+      axios
+        .get(`${API_BASE_URL}/api/resume/user/${encodeURIComponent(currentUser.Email)}`)
+        .then((res) => {
+          if (res.data?.status && res.data.data) {
+            const def = res.data.data.find((r: any) => r.isDefault) || res.data.data[0];
+            setDefaultResume(def);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [currentUser]);
+
   const handleApplyClick = () => {
     if (!currentUser) {
       router.push(`/login?redirect=/internareaid/${id}`);
@@ -126,6 +157,7 @@ export default function DetailAndApplyPage() {
         coverLetter: coverLetter,
         user: currentUser,
         Application: item,
+        resumeId: defaultResume?._id,
       };
 
       const res = await axios.post(`${API_BASE_URL}/api/application`, payload, {
@@ -141,7 +173,12 @@ export default function DetailAndApplyPage() {
         setApplyError(res.data.message || "Failed to submit application");
       }
     } catch (err: any) {
-      setApplyError(err.response?.data?.message || "Failed to submit application");
+      if (err.response?.status === 403 && err.response?.data?.code === "QUOTA_EXHAUSTED") {
+        setQuotaExhausted(true);
+        setApplyError(err.response.data.message);
+      } else {
+        setApplyError(err.response?.data?.message || "Failed to submit application");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -347,6 +384,46 @@ export default function DetailAndApplyPage() {
             {applyError && (
               <div className="mb-4 p-3 bg-red-50 text-red-700 text-sm rounded-lg border border-red-200">
                 {applyError}
+              </div>
+            )}
+            {defaultResume && (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs flex items-center justify-between">
+                <span className="text-blue-900 font-semibold">
+                  Attached Resume: <strong>{defaultResume.title}</strong> (Default)
+                </span>
+                <Link href="/resume-builder" className="text-blue-600 hover:underline font-bold text-[11px]">
+                  Change
+                </Link>
+              </div>
+            )}
+
+            {userSubscription && (
+              <div className="text-[11px] text-gray-500 flex justify-between items-center px-1">
+                <span>
+                  Current Plan: <strong>{userSubscription.plan}</strong>
+                </span>
+                <span>
+                  Applications Quota:{" "}
+                  <strong>
+                    {userSubscription.usedApplications} /{" "}
+                    {userSubscription.applicationLimit === 999999 ? "∞" : userSubscription.applicationLimit}
+                  </strong>
+                </span>
+              </div>
+            )}
+
+            {quotaExhausted && (
+              <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-900 space-y-1">
+                <div className="font-bold">Application Limit Reached</div>
+                <p>
+                  You have exhausted your monthly internship applications quota. Please upgrade your subscription plan to continue applying.
+                </p>
+                <Link
+                  href="/subscriptions"
+                  className="inline-block mt-1 font-bold text-blue-700 underline"
+                >
+                  View Subscription Plans & Upgrade →
+                </Link>
               </div>
             )}
 

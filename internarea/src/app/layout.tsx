@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { LanguageProvider } from "@/context/LanguageContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -13,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "InternArea - Find Internships & Jobs",
-  description: "Find and apply for top internships and fresher jobs",
+  title: "InternArea - Find Internships & Jobs | Multi-Language Career Platform",
+  description: "Find and apply for top internships and fresher jobs with premium ATS resume builder and community public space",
 };
 
 export default function RootLayout({
@@ -27,7 +28,9 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased bg-gray-50 text-gray-900`}
     >
-      <body className="min-h-full flex flex-col bg-gray-50 text-gray-900">{children}</body>
+      <body className="min-h-full flex flex-col bg-gray-50 text-gray-900">
+        <LanguageProvider>{children}</LanguageProvider>
+      </body>
     </html>
   );
 }

@@ -1,24 +1,78 @@
 const express = require("express");
 const router = express.Router();
 const Application = require("../Model/Application");
+const User = require("../Model/User");
+const Resume = require("../Model/Resume");
 
 router.post("/", async (req, res) => {
   try {
-    const { company, category, coverLetter, user, Application: appDetails } = req.body;
+    const { company, category, coverLetter, user: clientUser, Application: appDetails, resumeId } = req.body;
 
-    if (!user || (!coverLetter && coverLetter !== "")) {
+    if (!clientUser || (!coverLetter && coverLetter !== "")) {
       return res.status(400).json({
         status: false,
         message: "Missing application data",
       });
     }
 
+    const email = (clientUser.Email || clientUser.email || "").toLowerCase().trim();
+    let dbUser = await User.findOne({ Email: email });
+
+    // Quota Enforcement
+    if (dbUser) {
+      if (!dbUser.subscription) {
+        dbUser.subscription = {
+          plan: "Free",
+          status: "active",
+          applicationLimit: 1,
+          usedApplications: 0,
+          currentPeriodStart: new Date(),
+          currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        };
+      }
+
+      // Check quota
+      const limit = dbUser.subscription.applicationLimit || 1;
+      const used = dbUser.subscription.usedApplications || 0;
+
+      if (used >= limit) {
+        return res.status(403).json({
+          status: false,
+          code: "QUOTA_EXHAUSTED",
+          message: `You have exhausted your monthly internship application quota (${used}/${limit}). Upgrade your subscription plan to apply for more opportunities!`,
+          plan: dbUser.subscription.plan,
+          usedApplications: used,
+          applicationLimit: limit,
+        });
+      }
+
+      // Increment quota
+      dbUser.subscription.usedApplications += 1;
+      await dbUser.save();
+    }
+
+    // Default resume linkage
+    let attachedResumeId = resumeId || (dbUser ? dbUser.defaultResumeId : null);
+    let attachedResumeData = null;
+    if (attachedResumeId) {
+      attachedResumeData = await Resume.findById(attachedResumeId).select("title version templateId personalInfo isPaid").lean();
+    }
+
     const newApp = await Application.create({
       company: company || (appDetails && appDetails.company) || "InternArea Partner",
       category: category || (appDetails && appDetails.category) || "General",
       coverLetter: coverLetter || "",
-      user: user,
-      Application: appDetails || {},
+      user: dbUser ? {
+        _id: dbUser._id,
+        Name: dbUser.Name,
+        Email: dbUser.Email,
+        PhoneNumber: dbUser.PhoneNumber,
+        Photos: dbUser.Photos,
+      } : clientUser,
+      Application: {
+        ...(appDetails || {}),
+        attachedResume: attachedResumeData || undefined,
+      },
       status: "pending",
     });
 
@@ -26,6 +80,7 @@ router.post("/", async (req, res) => {
       status: true,
       message: "Application submitted successfully",
       data: newApp,
+      remainingQuota: dbUser ? Math.max(0, (dbUser.subscription.applicationLimit || 1) - dbUser.subscription.usedApplications) : 0,
     });
   } catch (error) {
     return res.status(500).json({
