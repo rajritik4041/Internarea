@@ -11,10 +11,20 @@ app.use(bodyparser.json({ limit: "50mb" }));
 app.use(bodyparser.urlencoded({ extended: true, limit: "50mb" }));
 app.use(express.json());
 
+const mongoose = require("mongoose");
+
 app.get("/", (req, res) => {
   res.json({
     status: true,
     message: "InternArea backend API is running successfully",
+  });
+});
+
+app.get("/api/health", (req, res) => {
+  res.json({
+    status: true,
+    message: "InternArea API is running",
+    database: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
   });
 });
 
